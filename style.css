@@ -1,0 +1,21 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #111;
+    font-family: Arial, sans-serif;
+    color: white;
+    text-align: center;
+}
+
+#ui {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+canvas {
+    display: block;
+    margin: 0 auto;
+    background: linear-gradient(#1e1e2f, #111);
+}

@@ -1,136 +1,192 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-const GRAVITY = 0.6;
-const JUMP_FORCE = -12;
-const GROUND_Y = 450;
-const SPEED = 6;
+const progressBar = document.getElementById("progressBar");
 
-let gameRunning = true;
+let shakeTime = 0;
+
+class Player {
+  constructor() {
+    this.x = 200;
+    this.y = 500;
+    this.size = 40;
+
+    this.velY = 0;
+    this.gravity = 0.7;
+    this.jumpPower = -15;
+
+    this.onGround = false;
+    this.coyoteTime = 0;
+    this.jumpBuffer = 0;
+
+    this.trail = [];
+  }
+
+  update() {
+    this.velY += this.gravity;
+    this.y += this.velY;
+
+    if (this.y + this.size >= 600) {
+      this.y = 600 - this.size;
+      this.velY = 0;
+      this.onGround = true;
+      this.coyoteTime = 10;
+    } else {
+      this.onGround = false;
+      this.coyoteTime--;
+    }
+
+    if (this.jumpBuffer > 0) this.jumpBuffer--;
+
+    if (this.jumpBuffer > 0 && this.coyoteTime > 0) {
+      this.jump();
+      this.jumpBuffer = 0;
+    }
+
+    this.trail.push({ x: this.x, y: this.y });
+    if (this.trail.length > 10) this.trail.shift();
+  }
+
+  jump() {
+    this.velY = this.jumpPower;
+    this.onGround = false;
+    createParticles(this.x + 20, this.y + 40);
+  }
+
+  draw() {
+    for (let t of this.trail) {
+      ctx.fillStyle = "rgba(0,255,255,0.2)";
+      ctx.fillRect(t.x, t.y, this.size, this.size);
+    }
+
+    ctx.fillStyle = "cyan";
+    ctx.fillRect(this.x, this.y, this.size, this.size);
+  }
+}
+
+class Obstacle {
+  constructor(x) {
+    this.x = x;
+    this.y = 560;
+    this.width = 40;
+    this.height = 40;
+  }
+
+  update(speed) {
+    this.x -= speed;
+  }
+
+  draw() {
+    ctx.fillStyle = "red";
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+  }
+}
+
+class Particle {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.velX = (Math.random() - 0.5) * 6;
+    this.velY = (Math.random() - 0.5) * 6;
+    this.life = 30;
+  }
+
+  update() {
+    this.x += this.velX;
+    this.y += this.velY;
+    this.life--;
+  }
+
+  draw() {
+    ctx.fillStyle = "white";
+    ctx.fillRect(this.x, this.y, 4, 4);
+  }
+}
+
+let player = new Player();
+let obstacles = [];
+let particles = [];
+let gameSpeed = 6;
 let distance = 0;
-let levelLength = 5000;
 
-const player = {
-    x: 150,
-    y: GROUND_Y,
-    size: 40,
-    velocityY: 0,
-    grounded: true
-};
+function createParticles(x, y) {
+  for (let i = 0; i < 10; i++) {
+    particles.push(new Particle(x, y));
+  }
+}
 
-const obstacles = [
-    { x: 600, width: 40, height: 40 },
-    { x: 900, width: 40, height: 60 },
-    { x: 1200, width: 40, height: 40 },
-    { x: 1500, width: 40, height: 80 },
-    { x: 2000, width: 40, height: 40 },
-    { x: 2300, width: 40, height: 60 },
-    { x: 2600, width: 40, height: 40 },
-    { x: 3000, width: 40, height: 100 },
-    { x: 3400, width: 40, height: 40 },
-    { x: 4000, width: 40, height: 60 }
-];
+function spawnObstacle() {
+  obstacles.push(new Obstacle(1300));
+}
 
-document.addEventListener("keydown", (e) => {
-    if (e.code === "Space" && player.grounded && gameRunning) {
-        player.velocityY = JUMP_FORCE;
-        player.grounded = false;
-    }
+setInterval(spawnObstacle, 2000);
 
-    if (e.code === "KeyR") {
-        restartGame();
-    }
-});
+function collision(a, b) {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.size > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.size > b.y
+  );
+}
 
 function update() {
-    if (!gameRunning) return;
+  player.update();
 
-    distance += SPEED;
-
-    // Gravity
-    player.velocityY += GRAVITY;
-    player.y += player.velocityY;
-
-    if (player.y >= GROUND_Y) {
-        player.y = GROUND_Y;
-        player.velocityY = 0;
-        player.grounded = true;
+  for (let o of obstacles) {
+    o.update(gameSpeed);
+    if (collision(player, o)) {
+      shakeTime = 10;
+      resetGame();
     }
+  }
 
-    checkCollisions();
-    updateProgress();
-}
+  for (let p of particles) p.update();
+  particles = particles.filter(p => p.life > 0);
 
-function checkCollisions() {
-    for (let obstacle of obstacles) {
-        let obstacleX = obstacle.x - distance;
-
-        if (
-            player.x < obstacleX + obstacle.width &&
-            player.x + player.size > obstacleX &&
-            player.y < GROUND_Y + obstacle.height &&
-            player.y + player.size > GROUND_Y
-        ) {
-            gameOver();
-        }
-    }
-}
-
-function updateProgress() {
-    let percent = Math.min(100, Math.floor((distance / levelLength) * 100));
-    document.getElementById("progress").innerText = percent + "%";
-
-    if (percent >= 100) {
-        gameRunning = false;
-        alert("Level Complete!");
-    }
+  distance += gameSpeed;
+  progressBar.style.width = (distance / 5000 * 100) + "%";
 }
 
 function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
 
-    // Ground
-    ctx.fillStyle = "#00ffcc";
-    ctx.fillRect(0, GROUND_Y + player.size, canvas.width, 100);
+  if (shakeTime > 0) {
+    ctx.translate(
+      Math.random() * 10 - 5,
+      Math.random() * 10 - 5
+    );
+    shakeTime--;
+  }
 
-    // Player
-    ctx.fillStyle = "#ff00ff";
-    ctx.fillRect(player.x, player.y, player.size, player.size);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Obstacles
-    ctx.fillStyle = "#ff4444";
-    for (let obstacle of obstacles) {
-        let obstacleX = obstacle.x - distance;
-        ctx.fillRect(
-            obstacleX,
-            GROUND_Y + player.size - obstacle.height,
-            obstacle.width,
-            obstacle.height
-        );
-    }
+  ctx.fillStyle = "#222";
+  ctx.fillRect(0, 600, 1280, 120);
 
-    if (!gameRunning) {
-        ctx.fillStyle = "white";
-        ctx.font = "40px Arial";
-        ctx.fillText("Game Over - Press R to Restart", 200, 250);
-    }
+  player.draw();
+  obstacles.forEach(o => o.draw());
+  particles.forEach(p => p.draw());
+
+  ctx.restore();
 }
 
-function gameOver() {
-    gameRunning = false;
+function resetGame() {
+  player = new Player();
+  obstacles = [];
+  distance = 0;
 }
 
-function restartGame() {
-    distance = 0;
-    player.y = GROUND_Y;
-    player.velocityY = 0;
-    gameRunning = true;
-}
+document.addEventListener("keydown", e => {
+  if (e.code === "Space") {
+    player.jumpBuffer = 10;
+  }
+});
 
 function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
 }
 
 gameLoop();

@@ -3,6 +3,8 @@ const ctx = canvas.getContext("2d");
 
 const progressBar = document.getElementById("progressBar");
 
+let distance = 0;
+let gameSpeed = 6;
 let shakeTime = 0;
 
 class Player {
@@ -12,13 +14,13 @@ class Player {
     this.size = 40;
 
     this.velY = 0;
-    this.gravity = 0.7;
-    this.jumpPower = -15;
+    this.gravity = 0.8;
+    this.jumpForce = -16;
 
-    this.onGround = false;
     this.coyoteTime = 0;
     this.jumpBuffer = 0;
 
+    this.rotation = 0;
     this.trail = [];
   }
 
@@ -26,13 +28,12 @@ class Player {
     this.velY += this.gravity;
     this.y += this.velY;
 
+    // Ground collision
     if (this.y + this.size >= 600) {
       this.y = 600 - this.size;
       this.velY = 0;
-      this.onGround = true;
       this.coyoteTime = 10;
     } else {
-      this.onGround = false;
       this.coyoteTime--;
     }
 
@@ -43,28 +44,60 @@ class Player {
       this.jumpBuffer = 0;
     }
 
+    this.rotation += 0.08;
+
     this.trail.push({ x: this.x, y: this.y });
-    if (this.trail.length > 10) this.trail.shift();
+    if (this.trail.length > 12) this.trail.shift();
   }
 
   jump() {
-    this.velY = this.jumpPower;
-    this.onGround = false;
-    createParticles(this.x + 20, this.y + 40);
+    this.velY = this.jumpForce;
+    createParticles(this.x + this.size / 2, this.y + this.size);
   }
 
   draw() {
+    // Shadow
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.ellipse(this.x + 20, 600, 28, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Trail
     for (let t of this.trail) {
-      ctx.fillStyle = "rgba(0,255,255,0.2)";
+      ctx.fillStyle = "rgba(0,255,255,0.15)";
       ctx.fillRect(t.x, t.y, this.size, this.size);
     }
 
-    ctx.fillStyle = "cyan";
-    ctx.fillRect(this.x, this.y, this.size, this.size);
+    ctx.save();
+    ctx.translate(this.x + this.size / 2, this.y + this.size / 2);
+    ctx.rotate(this.rotation);
+
+    ctx.shadowColor = "cyan";
+    ctx.shadowBlur = 25;
+
+    let grad = ctx.createLinearGradient(
+      -this.size / 2,
+      -this.size / 2,
+      this.size / 2,
+      this.size / 2
+    );
+    grad.addColorStop(0, "#00ffff");
+    grad.addColorStop(1, "#0055ff");
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(
+      -this.size / 2,
+      -this.size / 2,
+      this.size,
+      this.size
+    );
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
   }
 }
 
-class Obstacle {
+class Spike {
   constructor(x) {
     this.x = x;
     this.y = 560;
@@ -72,13 +105,22 @@ class Obstacle {
     this.height = 40;
   }
 
-  update(speed) {
-    this.x -= speed;
+  update() {
+    this.x -= gameSpeed;
   }
 
   draw() {
-    ctx.fillStyle = "red";
-    ctx.fillRect(this.x, this.y, this.width, this.height);
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y + this.height);
+    ctx.lineTo(this.x + this.width / 2, this.y);
+    ctx.lineTo(this.x + this.width, this.y + this.height);
+    ctx.closePath();
+
+    ctx.shadowColor = "#ff3c3c";
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = "#ff3c3c";
+    ctx.fill();
+    ctx.shadowBlur = 0;
   }
 }
 
@@ -86,9 +128,10 @@ class Particle {
   constructor(x, y) {
     this.x = x;
     this.y = y;
-    this.velX = (Math.random() - 0.5) * 6;
-    this.velY = (Math.random() - 0.5) * 6;
-    this.life = 30;
+    this.radius = Math.random() * 4 + 2;
+    this.velX = (Math.random() - 0.5) * 8;
+    this.velY = (Math.random() - 0.5) * 8;
+    this.life = 40;
   }
 
   update() {
@@ -98,28 +141,31 @@ class Particle {
   }
 
   draw() {
-    ctx.fillStyle = "white";
-    ctx.fillRect(this.x, this.y, 4, 4);
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "cyan";
+    ctx.shadowColor = "cyan";
+    ctx.shadowBlur = 15;
+    ctx.fill();
+    ctx.shadowBlur = 0;
   }
 }
 
 let player = new Player();
-let obstacles = [];
+let spikes = [];
 let particles = [];
-let gameSpeed = 6;
-let distance = 0;
 
 function createParticles(x, y) {
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 15; i++) {
     particles.push(new Particle(x, y));
   }
 }
 
-function spawnObstacle() {
-  obstacles.push(new Obstacle(1300));
+function spawnSpike() {
+  spikes.push(new Spike(1300));
 }
 
-setInterval(spawnObstacle, 2000);
+setInterval(spawnSpike, 1800);
 
 function collision(a, b) {
   return (
@@ -130,18 +176,54 @@ function collision(a, b) {
   );
 }
 
+function drawBackground() {
+  let gradient = ctx.createLinearGradient(0, 0, 0, 720);
+  gradient.addColorStop(0, "#0f2027");
+  gradient.addColorStop(0.5, "#203a43");
+  gradient.addColorStop(1, "#2c5364");
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 1280, 720);
+
+  drawMountains(distance * 0.2, 140, "rgba(0,0,0,0.3)");
+  drawMountains(distance * 0.4, 90, "rgba(0,0,0,0.5)");
+
+  let groundGrad = ctx.createLinearGradient(0, 600, 0, 720);
+  groundGrad.addColorStop(0, "#1a1a1a");
+  groundGrad.addColorStop(1, "#000");
+
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, 600, 1280, 120);
+}
+
+function drawMountains(offset, height, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, 600);
+
+  for (let i = 0; i < 10; i++) {
+    let x = i * 200 - (offset % 200);
+    ctx.lineTo(x, 600 - height);
+    ctx.lineTo(x + 100, 600);
+  }
+
+  ctx.lineTo(1280, 600);
+  ctx.closePath();
+  ctx.fill();
+}
+
 function update() {
   player.update();
 
-  for (let o of obstacles) {
-    o.update(gameSpeed);
-    if (collision(player, o)) {
-      shakeTime = 10;
+  spikes.forEach(s => {
+    s.update();
+    if (collision(player, s)) {
+      shakeTime = 12;
       resetGame();
     }
-  }
+  });
 
-  for (let p of particles) p.update();
+  particles.forEach(p => p.update());
   particles = particles.filter(p => p.life > 0);
 
   distance += gameSpeed;
@@ -153,27 +235,26 @@ function draw() {
 
   if (shakeTime > 0) {
     ctx.translate(
-      Math.random() * 10 - 5,
-      Math.random() * 10 - 5
+      Math.random() * 8 - 4,
+      Math.random() * 8 - 4
     );
     shakeTime--;
   }
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = "#222";
-  ctx.fillRect(0, 600, 1280, 120);
+  drawBackground();
 
-  player.draw();
-  obstacles.forEach(o => o.draw());
+  spikes.forEach(s => s.draw());
   particles.forEach(p => p.draw());
+  player.draw();
 
   ctx.restore();
 }
 
 function resetGame() {
   player = new Player();
-  obstacles = [];
+  spikes = [];
   distance = 0;
 }
 
